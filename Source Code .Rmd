@@ -1,0 +1,746 @@
+---
+title: "SIT741 - s22407595 - R Notebook"
+output: html_notebook
+---
+
+#Q.1
+# The data preparation including merging the datasets with the time range for both weather and card_accidents data is being implemenbted until line number 380.
+# First step involves using the same code from assignment to filter out accident data
+
+# Step 2 involves, preparing the weather data for the required date range
+# Step 3 involves, merging data on date and removing unwanted columns
+```{r}
+# 2.1
+library(tidyverse)
+library(skimr)
+
+cav_data_link <- 'car_accidents_victoria.csv'
+top_row <- read_csv(cav_data_link, col_names = FALSE, n_max = 1)
+second_row <- read_csv(cav_data_link, n_max = 1)
+
+column_names <- second_row %>% 
+  unlist(., use.names=FALSE) %>% 
+  make.unique(., sep = "__") # double underscore
+
+column_names[2:5] <- str_c(column_names[2:5], '0', sep='__')
+
+daily_accidents <-read_csv(cav_data_link, skip = 2, col_names = column_names)
+
+# pivot_longer
+daily_accidents1 <- daily_accidents %>%
+  pivot_longer(names_to = "ACCIDENT_TYPE_AND_REGION",
+              values_to = "NUMBER_OF_ACCIDENTS",
+              contains("__"),
+              values_drop_na = TRUE
+              )
+
+head(daily_accidents1)
+
+# split the columns 
+daily_accidents2 <- daily_accidents1 %>% 
+  separate(col = ACCIDENT_TYPE_AND_REGION, 
+           into = c("ACCIDENT_TYPE", "REGION"), 
+           sep = "__",
+           extra = "merge")
+
+head(daily_accidents2)
+
+# pivot wider
+daily_accidents3 = daily_accidents2 %>% 
+  pivot_wider(names_from = ACCIDENT_TYPE, values_from = NUMBER_OF_ACCIDENTS)
+
+head(daily_accidents3)
+
+# convert numeric values to actual values for the region column 
+for (value in unique(daily_accidents3$REGION))
+{
+  region_name <- top_row[!is.na(top_row)][as.numeric(value) + 1]  # +1 since the REGION values starts from 0 and indices in R starts from 1 
+  daily_accidents3$REGION[daily_accidents3$REGION == value] <- region_name
+}
+
+head(daily_accidents3)
+
+# change to date format
+library(lubridate)
+daily_accidents3$DATE <- dmy(daily_accidents3$DATE)
+
+# replace missing values with the mode value 
+mode_value <- as.numeric(names(sort(table(unlist(daily_accidents3), useNA = "always"), decreasing = TRUE)[1]))
+
+# Replace missing values with the mode
+daily_accidents3[is.na(daily_accidents3)] <- mode_value
+
+head(daily_accidents3)
+
+# select only EASTERN region
+daily_accidents_SOUTH_EAST_REGION <- daily_accidents3[daily_accidents3$REGION == 'METROPOLITAN SOUTH EAST REGION',]
+
+# compute the total accidents column 
+daily_accidents_SOUTH_EAST_REGION <- daily_accidents_SOUTH_EAST_REGION %>%
+  mutate(TOTAL_ACCIDENTS = FATAL + SERIOUS + NOINJURY + OTHER)
+
+head(daily_accidents_SOUTH_EAST_REGION)
+
+skim(daily_accidents_SOUTH_EAST_REGION)
+
+
+daily_accidents_SOUTH_EAST_REGION <- daily_accidents3[daily_accidents3$REGION == 'METROPOLITAN SOUTH EAST REGION',]
+
+daily_accidents_SOUTH_EAST_REGION <- daily_accidents_SOUTH_EAST_REGION %>%
+  mutate(TOTAL_ACCIDENTS = FATAL + SERIOUS + NOINJURY + OTHER)
+# View(daily_accidents_SOUTH_EAST_REGION)
+
+```
+
+# Prepare/fetch the weather data from NOAA using API calls
+```{r}
+options(noaakey = "HaxkzDUmmhWPDXwogSALKUUZduhWMHQi")
+
+library(rnoaa)
+library(tidyverse)
+```
+
+
+# Prepare 1st data chunk
+```{r}
+melbourne_data_PRCP <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'PRCP',
+  startdate = '2016-01-01',
+  enddate = '2016-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMIN <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMIN',
+  startdate = '2016-01-01',
+  enddate = '2016-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMAX <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMAX',
+  startdate = '2016-01-01',
+  enddate = '2016-12-31',
+  limit = 1000
+)$data
+
+```
+
+```{r}
+#merge data
+vic_data = rbind(melbourne_data_PRCP, melbourne_data_TMIN)
+vic_data = rbind(vic_data, melbourne_data_TMAX)
+```
+
+
+# Prepare 2nd data chunk
+```{r}
+melbourne_data_PRCP2 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'PRCP',
+  startdate = '2017-01-01',
+  enddate = '2017-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMIN2 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMIN',
+  startdate = '2017-01-01',
+  enddate = '2017-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMAX2 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMAX',
+  startdate = '2017-01-01',
+  enddate = '2017-12-31',
+  limit = 1000
+)$data
+
+
+```
+
+```{r}
+# merge the second chunk
+vic_data2 = rbind(melbourne_data_PRCP2, melbourne_data_TMIN2)
+vic_data2 = rbind(vic_data2, melbourne_data_TMAX2)
+
+```
+
+
+# Prepare 3rd chunk
+```{r}
+melbourne_data_PRCP3 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'PRCP',
+  startdate = '2018-01-01',
+  enddate = '2018-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMIN3 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMIN',
+  startdate = '2018-01-01',
+  enddate = '2018-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMAX3 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMAX',
+  startdate = '2018-01-01',
+  enddate = '2018-12-31',
+  limit = 1000
+)$data
+```
+
+```{r}
+#merge data
+vic_data3 = rbind(melbourne_data_PRCP3, melbourne_data_TMIN3)
+vic_data3 = rbind(vic_data3, melbourne_data_TMAX3)
+```
+
+# Prepare 4th chunk
+```{r}
+melbourne_data_PRCP4 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'PRCP',
+  startdate = '2019-01-01',
+  enddate = '2019-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMIN4 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMIN',
+  startdate = '2019-01-01',
+  enddate = '2019-12-31',
+  limit = 1000
+)$data
+
+melbourne_data_TMAX4 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMAX',
+  startdate = '2019-01-01',
+  enddate = '2019-12-31',
+  limit = 1000
+)$data
+```
+
+```{r}
+#merge data
+vic_data4 = rbind(melbourne_data_PRCP4, melbourne_data_TMIN4)
+vic_data4 = rbind(vic_data4, melbourne_data_TMAX4)
+```
+
+
+# Prepare 5th chunk
+```{r}
+melbourne_data_PRCP5 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'PRCP',
+  startdate = '2020-01-01',
+  enddate = '2020-06-30',
+  limit = 1000
+)$data
+
+melbourne_data_TMIN5 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMIN',
+  startdate = '2020-01-01',
+  enddate = '2020-06-30',
+  limit = 1000
+)$data
+
+melbourne_data_TMAX5 <- ncdc(
+  datasetid = 'GHCND',
+  stationid = 'GHCND:ASN00086077',
+  datatypeid = 'TMAX',
+  startdate = '2020-01-01',
+  enddate = '2020-06-30',
+  limit = 1000
+)$data
+```
+
+```{r}
+#merge data
+vic_data5 = rbind(melbourne_data_PRCP5, melbourne_data_TMIN5)
+vic_data5 = rbind(vic_data5, melbourne_data_TMAX5)
+```
+
+# combine all data using rowbind
+
+```{r}
+# Row bind the datasets
+combined_data <- rbind(vic_data, vic_data2, vic_data3, vic_data4, vic_data5)
+#View(combined_data)
+rows_count <- nrow(combined_data)
+col_count <- ncol(combined_data)
+
+cat("Rows", rows_count, "Cols", col_count)
+```
+
+# Merge the data on date
+```{r}
+# Rename the 'date' column to 'DATE'
+names(combined_data)[names(combined_data) == "date"] <- "DATE"
+
+# # Convert the date column to Date type
+combined_data <- combined_data %>%
+ mutate(DATE = as.Date(DATE))
+
+combined_data <- merge(combined_data, daily_accidents_SOUTH_EAST_REGION, by = "DATE")
+
+
+combined_data <- combined_data %>%
+  spread(key = datatype, value = value)
+
+# Print the modified dataset
+print(combined_data)
+```
+# Replace null values using mode just like from assignment 1
+```{r}
+library(dplyr)
+library(stats)
+
+# Define a function to calculate the mode, ignoring NA values
+calculate_mode <- function(x) {
+  uniq_x <- unique(x)
+  uniq_x[which.max(tabulate(match(x, uniq_x)))]
+}
+
+# Replace missing values with the mode for each column (excluding the date column)
+combined_data <- combined_data %>%
+  mutate(across(where(~ !is.Date(.)), ~ ifelse(is.na(.), calculate_mode(.), .)))
+
+# Print the updated dataset
+print(combined_data)
+
+
+which(is.na(combined_data), arr.ind = TRUE)
+```
+
+```{r}
+library(dplyr)
+
+final_data <- combined_data %>%
+  select(-station, -fl_m, -fl_q, -fl_so, -fl_t, -FATAL, -NOINJURY, -SERIOUS, -OTHER)
+
+
+final_data
+
+```
+
+```{r}
+
+null_counts <- sapply(final_data, function(col) sum(is.na(col)))
+print(null_counts)
+
+tot_rows <- nrow(final_data)
+cat("Tot_rows: ", tot_rows, '\n')
+
+tot_cols <- ncol(final_data)
+cat('Tot Cols', tot_cols, '\n')
+# combined_data <- combined_data %>% mutate(date = dmy(date))
+
+data_types <-sapply(final_data, class)
+cat('Data tyes', data_types)
+
+# Find the minimum and maximum dates in the dataset
+max_date = max(final_data$date)
+max_date <- max(final_data$DATE, na.rm = TRUE)
+min_date <- min(final_data$DATE, na.rm = TRUE)
+
+sprintf("Time range of data is from %s to %s", min_date, max_date)
+```
+
+
+
+
+# Question 3
+# Southeast region was chosen, using the assignment 1 code for accident data and have hand picked the data from NOAA for southeast region data
+# Q3.2
+```{r}
+# Load libraries
+library(ggplot2)
+library(dplyr)
+
+# Use a linear model
+lm_model <- lm(TOTAL_ACCIDENTS ~ DATE, data = final_data)
+
+# Create a dataframe with date and fitted values
+fitted_data <- final_data %>%
+  select(DATE) %>%
+  mutate(fitted_values = predict(lm_model))
+
+p1 <- ggplot(final_data, aes(x = DATE, y = TOTAL_ACCIDENTS)) +
+  geom_point() +
+  geom_line(data = fitted_data, aes(x = DATE, y = fitted_values), color = "blue") +
+  labs(title = "Fitted Values vs. Date", x = "Date", y = "TOTAL_ACCIDENTS")
+
+# Create a plot for residuals
+p2 <- ggplot(final_data, aes(x = DATE, y = residuals(lm_model))) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(title = "Residuals vs. Date", x = "Date", y = "Residuals")
+
+final_data <- final_data %>%
+  mutate(standardized_residuals = residuals(lm_model) / sd(residuals(lm_model)))
+
+
+# Create a plot for standardized residuals
+p3 <- ggplot(final_data, aes(x = DATE, y = standardized_residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(title = "Standardized Residuals vs. Date", x = "Date", y = "Standardized Residuals")
+
+
+# Summary
+summary(lm_model)
+
+```
+
+
+```{r}
+# Print Fitted values vs date
+print(p1)
+```
+
+```{r}
+#Residuals vs Date plot
+print(p2)
+
+```
+```{r}
+# Standardized residulas plot
+print(p3)
+```
+
+
+# Try QQ plot
+```{r}
+
+#try the QQ-plot for residuals to see whether they follow a theoretical distribution
+library(dplyr)
+lm_model %>% 
+  ggplot(aes(sample = .resid)) +
+  geom_qq() + 
+  geom_qq_line(col = 'blue') + 
+  xlab('Theoritical Quantiles') + 
+  ylab('Standardized residuals')
+
+```
+
+
+# Q3.3
+# GAM model
+```{r}
+# Load necessary libraries
+library(mgcv)
+library(ggplot2)
+
+
+final_data <- mutate(final_data, date_numeric = as.numeric(DATE))
+
+gam_model <- gam(TOTAL_ACCIDENTS ~ s(date_numeric), data = final_data)
+
+# Summary of the GAM Model Fit
+summary(gam_model)
+```
+```{r}
+# Plot the GAM fit
+plot(gam_model, rug = TRUE, residuals = TRUE, pch = 1, cex = 1, shade = TRUE, shade.col = "yellow")
+
+```
+```{r}
+gam.check(gam_model)
+
+```
+
+
+```{r}
+gam.check(gam_model)
+
+```
+# Augment the model
+# 3.4
+```{r}
+#Adding week day to the dataset
+library(dplyr)    # For data manipulation
+library(lubridate) # For working with dates
+library(mgcv)
+
+week_wise_data = final_data %>%
+  mutate(week_day = wday(DATE, label = TRUE))
+
+
+#Converting Week Days into numeric
+week_wise_data = week_wise_data %>%
+  mutate(week_day_numeric = as.numeric(week_day))
+
+weekly_gam_model = gam(TOTAL_ACCIDENTS ~ s(date_numeric) + s(week_day_numeric, k = 7),
+                        data = week_wise_data)
+# summary
+weekly_gam_model %>% summary
+```
+```{r}
+gam.check(weekly_gam_model)
+
+
+```
+
+
+
+```{r}
+plot(weekly_gam_model, rug = TRUE, residuals = TRUE, pch = 1, cex = 1, shade = TRUE, shade.col = "Yellow")
+
+```
+
+
+# Q3.5 - AIC scores
+```{r}
+print("AIC score of Linear Model:")
+AIC(lm_model)
+print("AIC score of GAM Model:")
+AIC(gam_model)
+print("AIC score of GAM Model with weekly variance:")
+AIC(weekly_gam_model)
+```
+
+
+# Question 4.1
+```{r}
+library(rnoaa)
+library(tidyverse)
+final_data_30years_TMAX = data.frame(date = character(),
+                              datatype = character(),
+                              station = character(),
+                              value = integer(),
+                              fl_m = character(),
+                              fl_q = character(),
+                              fl_so = character(),
+                              fl_t = character(),
+                              stringsAsFactors = FALSE)
+
+# get for 30 years
+for(i in 1:30) { 
+
+  year = 1970 + i
+  startDate = paste(year, '-01-01', sep = '')
+  endDate = paste(year, '-12-31', sep = '')
+  
+  yearlyData = ncdc(
+    datasetid = 'GHCND',
+    stationid = 'GHCND:ASN00086077',
+    datatypeid = 'TMAX',
+    startdate = startDate,
+    enddate = endDate,
+    limit = 1000
+  )$data
+  
+  final_data_30years_TMAX = rbind(final_data_30years_TMAX, yearlyData)
+}
+
+```
+
+```{r}
+
+final_data_30years_TMIN = data.frame(date = character(),
+                              datatype = character(),
+                              station = character(),
+                              value = integer(),
+                              fl_m = character(),
+                              fl_q = character(),
+                              fl_so = character(),
+                              fl_t = character(),
+                              stringsAsFactors = FALSE)
+
+# get for 30 years
+for(i in 1:30) { 
+  
+  year = 1970 + i
+  startDate = paste(year, '-01-01', sep = '')
+  endDate = paste(year, '-12-31', sep = '')
+  
+  yearlyData = ncdc(
+    datasetid = 'GHCND',
+    stationid = 'GHCND:ASN00086077',
+    datatypeid = 'TMIN',
+    startdate = startDate,
+    enddate = endDate,
+    limit = 1000
+  )$data
+  
+  final_data_30years_TMIN = rbind(final_data_30years_TMIN, yearlyData)
+}
+
+```
+
+```{r}
+final_data_30years_TMIN_updated <- final_data_30years_TMIN %>%
+  select(-datatype, -station, -fl_m, -fl_q, -fl_so, -fl_t)
+colnames(final_data_30years_TMIN_updated)[2] = "TMIN"
+
+final_data_30years_TMAX_updated <- final_data_30years_TMAX %>%
+  select(-datatype, -station, -fl_m, -fl_q, -fl_so, -fl_t)
+colnames(final_data_30years_TMAX_updated)[2] = "TMAX"
+
+#Merging TMAX and TMIN updated datasets
+final_data_30years_merged = merge(x = final_data_30years_TMIN_updated, y = final_data_30years_TMAX_updated, 
+                        by = "date", all.x = TRUE)
+
+#Calculating DMT of 30 years data
+final_data_30years_merged$DMT = rowMeans(final_data_30years_merged[, c('TMAX', 'TMIN')], na.rm = TRUE)
+
+# Function to calculate mode
+calculate_mode <- function(x) {
+  uniq_x <- unique(x)
+  uniq_x[which.max(tabulate(match(x, uniq_x)))]
+}
+
+# Replace missing values in the TMIN column with mode
+final_data_30years_merged <- final_data_30years_merged %>%
+  mutate(TMIN = ifelse(is.na(TMIN), calculate_mode(TMIN), TMIN))
+
+
+# calculate DMT for the final_data
+final_data$DMT = rowMeans(final_data[, c('TMAX', 'TMIN')], na.rm = TRUE)
+
+
+#Calculating DMT of 30 years data
+final_data_30years_merged$DMT = rowMeans(final_data_30years_merged[, c('TMAX', 'TMIN')], na.rm = TRUE)
+
+```
+
+```{r}
+t95 = quantile(final_data_30years_merged$DMT, 0.95) 
+print(t95)
+```
+
+```{r}
+# install the package zoo to analyze time-series data
+
+# find the 3 days average using width=3
+final_data$ThreeDaysAVG = zoo::rollapply(final_data$DMT, width = 3, FUN = mean,
+                                        fill = NA, align = 'left')
+
+```
+
+
+```{r}
+#Calculating EHI sig.
+final_data$EHIsig = final_data$ThreeDaysAVG - t95
+```
+
+
+```{r}
+#Finding 30 days average of DMT
+final_data$ThirtyDaysAVG = zoo::rollapplyr(c(rep(NA, 1), final_data$DMT[1:(length(final_data$DMT)-1)]), width = 30,FUN = mean, fill = NA)
+```
+
+
+```{r}
+#calculate EHI Acclimatization
+final_data$EHIaccl = final_data$ThreeDaysAVG - final_data$ThirtyDaysAVG
+```
+
+```{r}
+#calculate the EHF (Excess Heat Factor)
+# 𝐸𝐻𝐹=𝐸𝐻𝐼sig×max(1, 𝐸𝐻𝐼accl)
+# This formula is obtained from the paper
+
+
+# final_data$EHF = pmax(0, final_data$EHIsig) * pmax(1, final_data$EHIaccl)
+# use this code below to get the periodical output
+final_data$EHF = final_data$EHIsig * pmax(1, final_data$EHIaccl)
+final_data = final_data %>% mutate(EHF = ifelse(is.na(EHF), 0, EHF))
+```
+
+```{r}
+#Plotting the EHF value
+library(ggplot2)
+
+# Convert date column to POSIXct
+final_data <- final_data %>%
+  mutate(date = as.POSIXct(DATE, format = "%Y-%m-%d"))
+
+# Check the structure of the date column
+str(final_data$DATE)
+
+# Create the plot using ggplot
+ggplot(final_data, aes(x = date, y = EHF, group = 1)) +
+  geom_line(color = 'blue') +
+  ylab("Excess Heat Factor")
+```
+
+
+```{r}
+
+#Building GAM model
+# Use EHF as additional factor
+
+ehf_gam_model = gam(TOTAL_ACCIDENTS ~ s(date_numeric) + s(week_day_numeric, k = 7) + 
+                  s(final_data$EHF), data = week_wise_data)
+summary(ehf_gam_model)
+
+```
+
+```{r}
+plot(ehf_gam_model, rug = TRUE, residuals = TRUE, pch = 1, cex = 1,
+     shade = TRUE, shade.col = "blue")
+```
+
+```{r}
+gam.check(ehf_gam_model)
+```
+
+```{r}
+print("AIC score of GAM Model with EHF is:")
+AIC(ehf_gam_model)
+```
+
+
+Task 4.3 Model with extra features
+```{r}
+#Building GAM Fit Model for Attendance with EHF and another feature (Temperature range)
+
+final_data$TRange <- final_data$TMAX - final_data$TMIN
+
+extra_pred_gam_trange = gam(TOTAL_ACCIDENTS ~ s(date_numeric) + s(week_day_numeric, k = 7)
+                  + s(final_data$EHF) + s(final_data$TRange), data = week_wise_data)
+
+plot(extra_pred_gam_trange, rug = TRUE, residuals = TRUE, pch = 1, cex = 1,
+     shade = TRUE, shade.col = "blue")
+
+gam.check(extra_pred_gam_trange)
+```
+
+```{r}
+summary(extra_pred_gam_trange)
+```
+
+```{r}
+print("AIC score of GAM Model with EHF and Temperature range is:")
+AIC(extra_pred_gam_trange)
+
+```
