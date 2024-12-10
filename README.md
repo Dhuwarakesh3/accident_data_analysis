@@ -44,13 +44,7 @@ This project integrates road accident and weather datasets to build predictive m
 ---  
 
 ## Getting Started  
-1. **Clone the Repository:**  
-   ```bash  
-   git clone https://github.com/your-username/road-accidents-weather-analysis.git  
-   cd road-accidents-weather-analysis  
-   ```  
-
-2. **Install Required Packages:**  
+1. **Install Required Packages:**  
    ```R  
    install.packages(c("tidyverse", "mgcv", "ggplot2", "httr", "jsonlite"))  
    ```  
@@ -69,5 +63,6 @@ This project integrates road accident and weather datasets to build predictive m
 
 ## Contact  
 For questions or collaborations, feel free to reach out via LinkedIn or email.  
+dhuwarakesh.n@gmail.com
 
 Happy exploring! 🎉  
